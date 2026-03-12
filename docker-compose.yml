@@ -1,14 +1,24 @@
+version: "3.9"
+
 services:
-  postgres:
+  db:
     image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: dask_uavt
-      POSTGRES_USER: dask
-      POSTGRES_PASSWORD: dask123
+    container_name: dask-uavt-db
+    restart: unless-stopped
     ports:
       - "5432:5432"
+    environment:
+      POSTGRES_DB: dask_uavt
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d dask_uavt"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   pgdata:
+    driver: local
