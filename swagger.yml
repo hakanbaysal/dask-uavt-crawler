@@ -1,0 +1,149 @@
+openapi: "3.0.3"
+info:
+  title: DASK UAVT Address Code API
+  description: |
+    Unofficial OpenAPI specification for the DASK (Doğal Afet Sigortaları Kurumu)
+    UAVT Address Code lookup API at adreskodu.dask.gov.tr.
+
+    This is the API that the crawler consumes — NOT an API the crawler exposes.
+  version: "1.0.0"
+  contact:
+    name: Hakan Baysal
+    url: https://github.com/hakanbaysal
+
+servers:
+  - url: https://adreskodu.dask.gov.tr
+    description: Production
+
+paths:
+  /site-element/control/y.ashx:
+    get:
+      operationId: getToken
+      summary: Fetch dynamic session token
+      description: |
+        Returns a raw token string that must be cleaned:
+        - Replace `+` with space
+        - Remove `=`
+        The cleaned token is prepended to all subsequent POST bodies.
+      responses:
+        "200":
+          description: Raw token string
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "abc+def=ghi"
+        "504":
+          description: Gateway Timeout — retry
+
+  /site-element/control/load.ashx:
+    post:
+      operationId: loadData
+      summary: Fetch address hierarchy data
+      description: |
+        Returns address data for a given hierarchy level.
+        Response format depends on the `t` (type) parameter:
+        - `il`, `ce`, `vl`, `mh` → JSON (`{"yt": [...]}`)
+        - `sf`, `dk`, `ick` → HTML table
+        - `adr` → Address verification text
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: string
+              description: |
+                Format: `{TOKEN}=%3D&t={TYPE}&u={ID}`
+
+                Where:
+                - TOKEN: cleaned token from y.ashx
+                - TYPE: hierarchy level code
+                - ID: parent entity code (0 for cities)
+            examples:
+              cities:
+                summary: Fetch all cities
+                value: "cleaned token=%3D&t=il&u=0"
+              districts:
+                summary: Fetch districts for city 34 (İstanbul)
+                value: "cleaned token=%3D&t=ce&u=34"
+              streets:
+                summary: Fetch streets for quarter 1000
+                value: "cleaned token=%3D&t=sf&u=1000"
+      responses:
+        "200":
+          description: |
+            Response varies by type:
+
+            **JSON types (il, ce, vl, mh):**
+            ```json
+            {"yt": [{"i": "1", "t": "ADANA"}, {"i": "2", "t": "ADIYAMAN"}]}
+            ```
+
+            **HTML types (sf, dk, ick):**
+            HTML `<table>` with rows containing address data and `onclick` attributes.
+
+            **Address verification (adr):**
+            Plain text with full address.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JsonResponse"
+            text/html:
+              schema:
+                type: string
+                description: HTML table for street/building/section types
+        "504":
+          description: Gateway Timeout — retry with fresh token
+
+components:
+  schemas:
+    JsonResponse:
+      type: object
+      properties:
+        yt:
+          type: array
+          items:
+            $ref: "#/components/schemas/AddressItem"
+      example:
+        yt:
+          - i: "1"
+            t: "ADANA"
+          - i: "6"
+            t: "ANKARA"
+
+    AddressItem:
+      type: object
+      properties:
+        i:
+          type: string
+          description: Entity code (numeric as string)
+        t:
+          type: string
+          description: Entity name
+      required:
+        - i
+        - t
+
+    HierarchyTypes:
+      type: string
+      description: |
+        | Code | Level             | Parent param (u)    |
+        |------|-------------------|---------------------|
+        | il   | City (İl)         | 0 (fixed)           |
+        | ce   | District (İlçe)   | city code           |
+        | vl   | Village (Bucak)   | district code       |
+        | mh   | Quarter (Mahalle) | village code        |
+        | sf   | Street (Sokak)    | quarter code        |
+        | dk   | Building (Bina)   | street code         |
+        | ick  | Section (İç Kapı) | building code       |
+        | adr  | Address verify    | UAVT code           |
+      enum:
+        - il
+        - ce
+        - vl
+        - mh
+        - sf
+        - dk
+        - ick
+        - adr
