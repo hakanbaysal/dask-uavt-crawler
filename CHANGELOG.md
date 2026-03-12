@@ -3,6 +3,12 @@
 Tüm önemli değişiklikler bu dosyada belgelenir.
 Format: [Conventional Commits](https://www.conventionalcommits.org/)
 
+## [1.0.1] - 2025-07-16
+
+### Fixed
+
+- fix: add `load_dotenv()` call in `main()` so `.env` file is loaded for local runs (python-dotenv was in requirements.txt but never called)
+
 ## [1.0.0] - 2025-07-15
 
 ### Added
