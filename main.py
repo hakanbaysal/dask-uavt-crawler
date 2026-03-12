@@ -14,6 +14,8 @@ from __future__ import annotations
 import argparse
 import sys
 
+from dotenv import load_dotenv
+
 from src.client.dask_client import DaskClient
 from src.client.html_parser import HtmlParser
 from src.config import Config
@@ -117,6 +119,7 @@ def cmd_crawl(config: Config) -> None:
 
 def main() -> None:
     """Application entry point."""
+    load_dotenv()
     args = parse_args()
     config = Config()
 
