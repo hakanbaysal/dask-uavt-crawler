@@ -79,14 +79,14 @@ class TestParseJsonList:
 
     def test_parse_with_yt_wrapper(self, crawler: Crawler):
         """Should extract items from {"yt": [...]} wrapper."""
-        raw = json.dumps({"yt": [{"i": "1", "t": "ADANA"}, {"i": "2", "t": "ADIYAMAN"}]})
+        raw = json.dumps({"yt": [{"value": "1", "text": "ADANA"}, {"value": "2", "text": "ADIYAMAN"}]})
         result = crawler._parse_json_list(raw)
         assert len(result) == 2
-        assert result[0]["t"] == "ADANA"
+        assert result[0]["text"] == "ADANA"
 
     def test_parse_plain_array(self, crawler: Crawler):
         """Should handle bare JSON array."""
-        raw = json.dumps([{"i": "1", "t": "TEST"}])
+        raw = json.dumps([{"value": "1", "text": "TEST"}])
         result = crawler._parse_json_list(raw)
         assert len(result) == 1
 
@@ -123,11 +123,8 @@ class TestCrawlerRun:
 
     def test_run_fetches_cities_first(self, crawler, mock_client, mock_db):
         """Run should fetch cities as the first step."""
-        # Return single city with no children
-        mock_client.load.return_value = json.dumps({"yt": [{"i": "1", "t": "ADANA"}]})
-        # Districts return empty
         mock_client.load.side_effect = [
-            json.dumps({"yt": [{"i": "1", "t": "ADANA"}]}),  # cities
+            json.dumps({"yt": [{"value": "1", "text": "ADANA"}]}),  # cities
             json.dumps({"yt": []}),  # districts for ADANA
         ]
 
@@ -149,21 +146,13 @@ class TestCrawlerRun:
 
     def test_run_traverses_hierarchy(self, crawler, mock_client, mock_db, mock_parser):
         """Should traverse city → district → village → quarter → street → building → section."""
-        # Set up the call chain
         mock_client.load.side_effect = [
-            # Cities
-            json.dumps({"yt": [{"i": "1", "t": "ADANA"}]}),
-            # Districts for ADANA
-            json.dumps({"yt": [{"i": "10", "t": "SEYHAN"}]}),
-            # Villages for SEYHAN
-            json.dumps({"yt": [{"i": "100", "t": "MERKEZ"}]}),
-            # Quarters for MERKEZ
-            json.dumps({"yt": [{"i": "1000", "t": "REŞATBEY"}]}),
-            # Streets for REŞATBEY (HTML)
+            json.dumps({"yt": [{"value": "1", "text": "ADANA"}]}),
+            json.dumps({"yt": [{"value": "10", "text": "SEYHAN"}]}),
+            json.dumps({"yt": [{"value": "100", "text": "MERKEZ"}]}),
+            json.dumps({"yt": [{"value": "1000", "text": "REŞATBEY"}]}),
             "<table><tr><td>SOKAK</td><td>TEST</td><td onclick=\"yl('5000')\">Seç</td></tr></table>",
-            # Buildings for street (HTML)
             "<table><tr><td>1</td><td>BN1</td><td></td><td></td><td onclick=\"yl('6000')\">Seç</td></tr></table>",
-            # Sections for building (HTML)
             "<table><tr><td>1</td><td onclick=\"yl('70000')\">Seç</td></tr></table>",
         ]
 
@@ -193,7 +182,7 @@ class TestCrawlerRun:
     def test_run_saves_checkpoint_after_city(self, crawler, mock_client, mock_progress):
         """Progress should be saved after each city is processed."""
         mock_client.load.side_effect = [
-            json.dumps({"yt": [{"i": "1", "t": "ADANA"}, {"i": "2", "t": "ADIYAMAN"}]}),
+            json.dumps({"yt": [{"value": "1", "text": "ADANA"}, {"value": "2", "text": "ADIYAMAN"}]}),
             json.dumps({"yt": []}),  # No districts for ADANA
             json.dumps({"yt": []}),  # No districts for ADIYAMAN
         ]
@@ -209,18 +198,15 @@ class TestCheckpointResume:
 
     def test_resume_skips_completed_cities(self, crawler, mock_client, mock_progress):
         """Cities before checkpoint should be skipped."""
-        # Checkpoint at city 34 (İstanbul)
         mock_progress.load.return_value = Checkpoint(city_code=34)
 
         mock_client.load.side_effect = [
-            # All cities
             json.dumps({"yt": [
-                {"i": "1", "t": "ADANA"},
-                {"i": "34", "t": "İSTANBUL"},
-                {"i": "35", "t": "İZMİR"},
+                {"value": "1", "text": "ADANA"},
+                {"value": "34", "text": "İSTANBUL"},
+                {"value": "35", "text": "İZMİR"},
             ]}),
-            # Districts for İZMİR (35 > 34, so it should be processed)
-            json.dumps({"yt": []}),
+            json.dumps({"yt": []}),  # Districts for İZMİR
         ]
 
         crawler.run()

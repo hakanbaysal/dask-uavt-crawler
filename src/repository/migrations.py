@@ -17,68 +17,85 @@ class MigrationError(Exception):
 _TABLES_SQL = """
 -- Cities (İller)
 CREATE TABLE IF NOT EXISTS cities (
-    code        INTEGER PRIMARY KEY,
+    code        BIGINT PRIMARY KEY,
     name        VARCHAR(100) NOT NULL,
     created_at  TIMESTAMP DEFAULT NOW()
 );
 
 -- Districts (İlçeler)
 CREATE TABLE IF NOT EXISTS districts (
-    code        INTEGER PRIMARY KEY,
+    code        BIGINT PRIMARY KEY,
     name        VARCHAR(100) NOT NULL,
-    city_code   INTEGER NOT NULL REFERENCES cities(code),
+    city_code   BIGINT NOT NULL REFERENCES cities(code),
     created_at  TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_districts_city ON districts(city_code);
 
 -- Villages / Sub-districts (Bucak / Köy)
 CREATE TABLE IF NOT EXISTS villages (
-    code          INTEGER PRIMARY KEY,
+    code          BIGINT PRIMARY KEY,
     name          VARCHAR(150) NOT NULL,
-    district_code INTEGER NOT NULL REFERENCES districts(code),
+    district_code BIGINT NOT NULL REFERENCES districts(code),
     created_at    TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_villages_district ON villages(district_code);
 
 -- Quarters (Mahalleler)
 CREATE TABLE IF NOT EXISTS quarters (
-    code         INTEGER PRIMARY KEY,
+    code         BIGINT PRIMARY KEY,
     name         VARCHAR(150) NOT NULL,
-    village_code INTEGER NOT NULL REFERENCES villages(code),
+    village_code BIGINT NOT NULL REFERENCES villages(code),
     created_at   TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_quarters_village ON quarters(village_code);
 
 -- Streets (Cadde / Sokak)
 CREATE TABLE IF NOT EXISTS streets (
-    code         INTEGER PRIMARY KEY,
+    code         BIGINT PRIMARY KEY,
     name         VARCHAR(200) NOT NULL,
     street_type  VARCHAR(50) DEFAULT '',
-    quarter_code INTEGER NOT NULL REFERENCES quarters(code),
+    quarter_code BIGINT NOT NULL REFERENCES quarters(code),
     created_at   TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_streets_quarter ON streets(quarter_code);
 
 -- Buildings (Binalar)
 CREATE TABLE IF NOT EXISTS buildings (
-    code          INTEGER PRIMARY KEY,
+    code          BIGINT PRIMARY KEY,
     building_no   VARCHAR(50) DEFAULT '',
     building_code VARCHAR(50) DEFAULT '',
     site_name     VARCHAR(200) DEFAULT '',
     building_name VARCHAR(200) DEFAULT '',
-    street_code   INTEGER NOT NULL REFERENCES streets(code),
+    street_code   BIGINT NOT NULL REFERENCES streets(code),
     created_at    TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_buildings_street ON buildings(street_code);
 
 -- Sections / Units (İç Kapı — Bağımsız Bölüm)
 CREATE TABLE IF NOT EXISTS sections (
-    uavt_code     INTEGER PRIMARY KEY,
+    uavt_code     BIGINT PRIMARY KEY,
     door_no       VARCHAR(50) DEFAULT '',
-    building_code INTEGER NOT NULL REFERENCES buildings(code),
+    building_code BIGINT NOT NULL REFERENCES buildings(code),
     created_at    TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_sections_building ON sections(building_code);
+"""
+
+# Upgrade existing INTEGER columns to BIGINT (safe, no data loss)
+_UPGRADE_SQL = """
+ALTER TABLE cities ALTER COLUMN code TYPE BIGINT;
+ALTER TABLE districts ALTER COLUMN code TYPE BIGINT;
+ALTER TABLE districts ALTER COLUMN city_code TYPE BIGINT;
+ALTER TABLE villages ALTER COLUMN code TYPE BIGINT;
+ALTER TABLE villages ALTER COLUMN district_code TYPE BIGINT;
+ALTER TABLE quarters ALTER COLUMN code TYPE BIGINT;
+ALTER TABLE quarters ALTER COLUMN village_code TYPE BIGINT;
+ALTER TABLE streets ALTER COLUMN code TYPE BIGINT;
+ALTER TABLE streets ALTER COLUMN quarter_code TYPE BIGINT;
+ALTER TABLE buildings ALTER COLUMN code TYPE BIGINT;
+ALTER TABLE buildings ALTER COLUMN street_code TYPE BIGINT;
+ALTER TABLE sections ALTER COLUMN uavt_code TYPE BIGINT;
+ALTER TABLE sections ALTER COLUMN building_code TYPE BIGINT;
 """
 
 
@@ -101,6 +118,11 @@ def run_migrations(config: Config) -> None:
 
         logger.info("Running database migrations...")
         cursor.execute(_TABLES_SQL)
+
+        # Upgrade existing INTEGER columns to BIGINT if needed
+        logger.info("Upgrading column types to BIGINT...")
+        cursor.execute(_UPGRADE_SQL)
+
         logger.info("Migrations completed successfully.")
 
         cursor.close()

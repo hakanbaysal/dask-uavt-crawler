@@ -25,37 +25,44 @@ class HtmlParser:
     - ick (Section): [door_no, onclick→uavt_code]
     """
 
-    # Regex to extract numeric ID from onclick attributes like "yl('12345')"
-    ONCLICK_ID_PATTERN = re.compile(r"yl\(['\"]?(\d+)['\"]?\)")
+    # Regex to extract numeric ID from onclick attributes like "ss('12345')", "sb('12345')", or "yl('12345')"
+    ONCLICK_ID_PATTERN = re.compile(r"(?:yl|ss|sb)\(['\"]?(\d+)['\"]?\)")
 
     def __init__(self) -> None:
         self._logger = logging.getLogger("dask_uavt.parser")
 
     def _extract_onclick_id(self, element) -> int:
         """
-        Extract numeric ID from an element's onclick attribute.
+        Extract numeric ID from an element's onclick attribute or row id.
 
         Args:
-            element: BeautifulSoup Tag with onclick attribute.
+            element: BeautifulSoup Tag with onclick attribute or id like "s12345"/"d12345".
 
         Returns:
             Extracted integer ID.
 
         Raises:
-            ParseError: If onclick attribute is missing or malformed.
+            ParseError: If ID cannot be extracted.
         """
+        # Try onclick attribute first
         onclick = element.get("onclick", "")
         if not onclick:
-            # Sometimes the onclick is on a child <a> tag
             link = element.find("a", onclick=True)
             if link:
                 onclick = link.get("onclick", "")
 
         match = self.ONCLICK_ID_PATTERN.search(onclick)
-        if not match:
-            raise ParseError(f"Cannot extract ID from onclick: '{onclick}'")
+        if match:
+            return int(match.group(1))
 
-        return int(match.group(1))
+        # Fallback: extract from row id attribute (e.g., "s1462035", "d91013881")
+        row_id = element.get("id", "")
+        if row_id:
+            id_match = re.match(r"[a-z](\d+)", row_id)
+            if id_match:
+                return int(id_match.group(1))
+
+        raise ParseError(f"Cannot extract ID from element: onclick='{onclick}', id='{element.get('id', '')}'")
 
     def _get_rows(self, html: str) -> list:
         """

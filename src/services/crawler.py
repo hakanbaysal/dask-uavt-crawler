@@ -61,15 +61,19 @@ class Crawler:
         """
         Parse JSON array from API response.
 
-        The API wraps results in {"yt": [...]}.
+        The API wraps results in {"yt": [{"value": "...", "text": "..."}, ...]}.
+        First element is typically a placeholder ("SEÇİNİZ") with empty value — skipped.
         """
         try:
             data = json.loads(raw)
             if isinstance(data, dict) and "yt" in data:
-                return data["yt"]
-            if isinstance(data, list):
-                return data
-            return []
+                items = data["yt"]
+            elif isinstance(data, list):
+                items = data
+            else:
+                return []
+            # Filter out placeholder entries with empty value
+            return [item for item in items if item.get("value")]
         except (json.JSONDecodeError, TypeError) as exc:
             self._logger.warning("Failed to parse JSON: %s", exc)
             return []
@@ -80,15 +84,15 @@ class Crawler:
         """Fetch all cities (il, u=0)."""
         raw = self._client.load("il", 0)
         items = self._parse_json_list(raw)
-        return [City(code=int(item["i"]), name=item["t"]) for item in items if "i" in item]
+        return [City(code=int(item["value"]), name=item["text"]) for item in items]
 
     def _fetch_districts(self, city_code: int) -> List[District]:
         """Fetch districts for a city (ce, u=city_code)."""
         raw = self._client.load("ce", city_code)
         items = self._parse_json_list(raw)
         return [
-            District(code=int(item["i"]), name=item["t"], city_code=city_code)
-            for item in items if "i" in item
+            District(code=int(item["value"]), name=item["text"], city_code=city_code)
+            for item in items
         ]
 
     def _fetch_villages(self, district_code: int) -> List[Village]:
@@ -96,8 +100,8 @@ class Crawler:
         raw = self._client.load("vl", district_code)
         items = self._parse_json_list(raw)
         return [
-            Village(code=int(item["i"]), name=item["t"], district_code=district_code)
-            for item in items if "i" in item
+            Village(code=int(item["value"]), name=item["text"], district_code=district_code)
+            for item in items
         ]
 
     def _fetch_quarters(self, village_code: int) -> List[Quarter]:
@@ -105,8 +109,8 @@ class Crawler:
         raw = self._client.load("mh", village_code)
         items = self._parse_json_list(raw)
         return [
-            Quarter(code=int(item["i"]), name=item["t"], village_code=village_code)
-            for item in items if "i" in item
+            Quarter(code=int(item["value"]), name=item["text"], village_code=village_code)
+            for item in items
         ]
 
     def _fetch_streets(self, quarter_code: int) -> List[Street]:

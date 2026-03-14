@@ -68,10 +68,7 @@ class DaskClient:
         Fetch a new dynamic token from the API.
 
         Returns:
-            Cleaned token string.
-
-        Raises:
-            TokenError: If token retrieval fails after retries.
+            Cleaned token string, or empty string if token endpoint is unavailable.
         """
         url = f"{self._config.base_url}{self.TOKEN_PATH}"
 
@@ -82,8 +79,8 @@ class DaskClient:
                 resp.raise_for_status()
 
                 raw_token = resp.text.strip()
-                if not raw_token:
-                    raise TokenError("Empty token received")
+                if not raw_token or "<html" in raw_token.lower():
+                    raise TokenError("Invalid token response (HTML or empty)")
 
                 self._token = self._clean_token(raw_token)
                 self._logger.info("Token acquired: %s...", self._token[:20])
@@ -96,9 +93,10 @@ class DaskClient:
                 if attempt < self._config.max_retries:
                     time.sleep(self._config.retry_delay)
 
-        raise TokenError(
-            f"Failed to fetch token after {self._config.max_retries} attempts"
-        )
+        # Token endpoint may be down — API can work without token
+        self._logger.warning("Token endpoint unavailable, proceeding without token.")
+        self._token = ""
+        return self._token
 
     def _ensure_token(self) -> str:
         """Return existing token or fetch a new one."""
@@ -143,7 +141,13 @@ class DaskClient:
         """
         token = self._ensure_token()
         url = f"{self._config.base_url}{self.LOAD_PATH}"
-        body = f"{token}=%3D&t={type_code}&u={parent_id}"
+
+        def _build_body() -> str:
+            if token:
+                return f"{token}&t={type_code}&u={parent_id}"
+            return f"t={type_code}&u={parent_id}"
+
+        body = _build_body()
 
         for attempt in range(1, self._config.max_retries + 1):
             try:
@@ -159,11 +163,31 @@ class DaskClient:
                 )
                 self._last_request_time = time.time()
 
+                # 429 Too Many Requests — back off longer
+                if resp.status_code == 429:
+                    wait = self._config.retry_delay * 2 * attempt
+                    self._logger.warning(
+                        "429 Rate limited for t=%s u=%d, waiting %.0fs...",
+                        type_code, parent_id, wait,
+                    )
+                    time.sleep(wait)
+                    continue
+
+                # 500 Internal Server Error — server-side bug, no point retrying with token refresh
+                if resp.status_code == 500:
+                    self._logger.warning(
+                        "500 Server Error for t=%s u=%d, skipping.",
+                        type_code, parent_id,
+                    )
+                    raise ApiError(
+                        f"Server error (500) for t={type_code}, u={parent_id}"
+                    )
+
                 # 504 Gateway Timeout — retry with token refresh
                 if resp.status_code == 504:
                     self._logger.warning("504 Gateway Timeout, refreshing token...")
                     token = self.refresh_token()
-                    body = f"{token}=%3D&t={type_code}&u={parent_id}"
+                    body = _build_body()
                     time.sleep(self._config.retry_delay)
                     continue
 
@@ -178,11 +202,8 @@ class DaskClient:
 
                 # Refresh token in case of auth issues
                 if attempt < self._config.max_retries:
-                    try:
-                        token = self.refresh_token()
-                        body = f"{token}=%3D&t={type_code}&u={parent_id}"
-                    except TokenError:
-                        pass
+                    token = self.refresh_token()
+                    body = _build_body()
                     time.sleep(self._config.retry_delay)
 
         raise ApiError(

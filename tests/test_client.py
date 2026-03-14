@@ -55,24 +55,23 @@ class TestTokenManagement:
         assert token == "abc def123"
 
     @patch("src.client.dask_client.requests.Session.get")
-    def test_fetch_token_empty_raises(self, mock_get, client: DaskClient):
-        """Empty token response should raise TokenError."""
+    def test_fetch_token_empty_falls_back(self, mock_get, client: DaskClient):
+        """Empty token response should fall back to empty string (no raise)."""
         mock_resp = MagicMock()
         mock_resp.text = "  "
         mock_resp.raise_for_status = MagicMock()
         mock_get.return_value = mock_resp
 
-        with pytest.raises(TokenError, match="Failed to fetch token"):
-            client.fetch_token()
+        token = client.fetch_token()
+        assert token == ""
 
     @patch("src.client.dask_client.requests.Session.get")
     def test_fetch_token_retries_on_failure(self, mock_get, client: DaskClient):
-        """Should retry on network errors up to max_retries."""
+        """Should retry on network errors and fall back to empty token."""
         mock_get.side_effect = requests.ConnectionError("Connection refused")
 
-        with pytest.raises(TokenError, match="Failed to fetch token after 2"):
-            client.fetch_token()
-
+        token = client.fetch_token()
+        assert token == ""
         assert mock_get.call_count == 2
 
     @patch("src.client.dask_client.requests.Session.get")
@@ -105,7 +104,7 @@ class TestLoad:
         # Load response
         load_resp = MagicMock()
         load_resp.status_code = 200
-        load_resp.text = '{"yt": [{"i": "1", "t": "ADANA"}]}'
+        load_resp.text = '{"yt": [{"value": "1", "text": "ADANA"}]}'
         load_resp.raise_for_status = MagicMock()
         mock_post.return_value = load_resp
 
